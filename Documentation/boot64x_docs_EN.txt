@@ -1,0 +1,51 @@
+NexusOS — Bootloader Documentation (boot64x.c)
+Part 1: EFI startup and console output
+
+1. Purpose of the code
+
+boot64x.c is the entry point of NexusOS. It is a minimal EFI bootloader: it receives control from the UEFI firmware, prints a greeting to the console, and puts the CPU to sleep. This is the foundation on which the rest of the OS will be built. The code is built as an EFI application (verified in QEMU with OVMF).
+
+2. Basic types
+
+- EFI_STATUS (uint64_t) — the return code of all EFI functions; 0 (EFI_SUCCESS) means success.
+- EFI_HANDLE — an opaque pointer to a firmware object (image, protocol, etc.).
+- CHAR16 — the character type of UEFI strings. Important: UEFI works in UTF-16, so all string literals are written with the L"..." prefix.
+
+3. Structures
+
+EFI_TABLE_HEADER — the header of any UEFI system table: Signature (table signature), Revision (specification version), HeaderSize (size in bytes), CRC32 (checksum, verified by the firmware), Reserved (always 0).
+
+EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL — the text output protocol. Only two fields are declared in the code: Reset (console reset) and OutputString (prints a string). The real protocol has more fields — TestString, QueryMode, SetAttribute, and others; they are not needed yet.
+
+EFI_SYSTEM_TABLE — the main UEFI table, passed to the entry point: the header, FirmwareVendor (firmware name), FirmwareRevision, console handles and protocols — input (ConIn) and output (ConOut). Our code uses ConOut.
+
+4. Entry point
+
+EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE* SystemTable)
+
+ImageHandle — the handle of the EFI application itself (not used yet, hence (void)ImageHandle; it will be needed later — for loading partitions, obtaining protocols). SystemTable — the entire UEFI runtime environment available to the bootloader.
+
+5. Key points (where everyone stumbles)
+
+- Strings must be L"...". A literal without L is an array of char, while OutputString expects CHAR16* (UTF-16). Without the L prefix the output will be garbage.
+- Line breaks are \r\n only. The UEFI console does not move to a new line on a single \n: the "carriage return + line feed" pair is required.
+- The "This pointer" pattern. OutputString is called as SystemTable->ConOut->OutputString(SystemTable->ConOut, message) — the first argument is the protocol itself. This is the general UEFI/COM style: the function does not know about any global context, the object is passed to it explicitly.
+- The hlt loop. After printing, the bootloader must stop, but there are no interrupt drivers yet, so the safe approach is an infinite loop with hlt: the CPU sleeps until a hardware interrupt and does not waste power.
+
+6. Not implemented yet (candidates for issues)
+
+- error handling: the EFI_STATUS returned by OutputString is ignored;
+- ExitBootServices is not called yet — the firmware still owns memory and devices;
+- the full EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL declaration (it also has ClearScreen, SetAttribute, video modes);
+- parsing the memory map (GetMemoryMap) — the next step towards the physical memory manager;
+- output via GOP and the framebuffer — graphics instead of the text console.
+
+7. How to help the project
+
+- testing the bootloader on real hardware and different UEFI implementations (so far verified only in QEMU);
+- reviewing the physical memory manager (bitmap-based allocator);
+- any tasks from the issues — the list is updated regularly. Building: see the Documentation section in the repository.
+
+8. Roadmap (brief)
+
+Done: efi_main, console output, physical memory manager. Next: framebuffer/GOP, kernel loading, ExitBootServices, switching to 64-bit mode with firmware services torn down, the NexusOS kernel.
